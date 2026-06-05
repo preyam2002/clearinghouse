@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.*
+!.env.example
+dist/
+.next/
+.move-home/
+move/clearinghouse/.move-home/
+.sui-home/
+coverage/
+move/clearinghouse/build/
+move/clearinghouse/Move.lock
+scripts/last-demo.json
+deployment.json
+next-env.d.ts
+*.tsbuildinfo
