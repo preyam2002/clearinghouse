@@ -7,7 +7,8 @@ import { NextResponse } from "next/server";
 // subprocess, so this must run on the Node.js runtime, never the Edge runtime.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+// Vercel Hobby caps serverless functions at 60s; the live agent run is ~25-30s.
+export const maxDuration = 60;
 
 interface RunBody {
   spec?: unknown;

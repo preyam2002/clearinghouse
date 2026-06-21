@@ -23,3 +23,4 @@ enclave/pcrs.json
 enclave/registration.json
 next-env.d.ts
 *.tsbuildinfo
+.vercel

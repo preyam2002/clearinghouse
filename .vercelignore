@@ -1,0 +1,24 @@
+# Keep the Vercel upload to source only — Vercel reinstalls deps and rebuilds.
+# (The CLI does not reliably honor .gitignore, so list the heavy/irrelevant dirs here.)
+node_modules
+.next
+.git
+.sui-local
+.sui-local.backup-*
+.move-home
+.move
+
+# Not needed to build the dapp (Move contracts, Rust enclave, demo scripts, docs).
+move
+enclave
+scripts
+target
+*.eif
+
+# Misc build/junk
+.playwright-mcp
+.vercel
+coverage
+dist
+*.log
+*.tsbuildinfo
