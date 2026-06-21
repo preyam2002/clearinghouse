@@ -1,0 +1,32 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Clearinghouse mark: three agents converge into one atomic settlement.
+       Swiss-brutalist palette — paper, ink, cobalt, vermillion. -->
+  <rect width="1024" height="1024" fill="#f0eee7"/>
+
+  <!-- engineering frame -->
+  <rect x="64" y="64" width="896" height="896" fill="none" stroke="#14130f" stroke-width="14"/>
+
+  <!-- registration crop ticks -->
+  <g stroke="#14130f" stroke-width="10" fill="none">
+    <path d="M104 140 V104 H140"/>
+    <path d="M920 140 V104 H884"/>
+    <path d="M104 884 V920 H140"/>
+    <path d="M920 884 V920 H884"/>
+  </g>
+
+  <!-- connectors: settlement node -> the three agents -->
+  <g stroke="#14130f" stroke-width="14" stroke-linecap="round">
+    <line x1="512" y1="512" x2="512" y2="280"/>
+    <line x1="512" y1="512" x2="715" y2="630"/>
+    <line x1="512" y1="512" x2="309" y2="630"/>
+  </g>
+
+  <!-- agent nodes -->
+  <circle cx="512" cy="280" r="46" fill="#f0eee7" stroke="#14130f" stroke-width="14"/>
+  <circle cx="715" cy="630" r="46" fill="#1b3df0"/>
+  <circle cx="309" cy="630" r="46" fill="#f0eee7" stroke="#14130f" stroke-width="14"/>
+
+  <!-- atomic settlement node -->
+  <circle cx="512" cy="512" r="104" fill="#ec3b1a"/>
+  <circle cx="512" cy="512" r="44" fill="#f0eee7"/>
+</svg>
