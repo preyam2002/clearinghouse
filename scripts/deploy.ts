@@ -10,11 +10,11 @@ async function main() {
   console.log(`Deployer ${address} on ${net}`);
 
   await ensureFunded(c, address);
-  const packageId = await publishPackage(c, keypair);
+  const deployment = await publishPackage(c, keypair);
 
-  const record = { network: net, packageId, deployer: address };
+  const record = { network: net, ...deployment, deployer: address };
   writeFileSync(path.join(repoRoot, "deployment.json"), `${JSON.stringify(record, null, 2)}\n`);
-  console.log(`Published ${packageId} → deployment.json`);
+  console.log(`Published ${deployment.packageId} → deployment.json`);
 }
 
 main().catch((error) => {

@@ -1,11 +1,18 @@
 import { commit, PASS_SENTINEL } from "@clearinghouse/sdk";
 import { describe, expect, test } from "vitest";
-import { type AgentBundle, assembleSettlement } from "../src/orchestrator.js";
+import {
+  type AgentBundle,
+  assembleSettlement,
+  INJECTED_FAULT,
+  runJob,
+  withInjectedFault,
+} from "../src/orchestrator.js";
 
 const PAYEES = { codegen: "0xa1", testwriter: "0xa2", reviewer: "0xa3" };
 const COMMON = {
   packageId: "0xcafe",
   jobId: "0x1234",
+  registryId: "0x5678",
   coinType: "0x2::sui::SUI",
   spec: "implement add(a, b)",
   payees: PAYEES,
@@ -49,5 +56,35 @@ describe("assembleSettlement", () => {
 
     expect(result.passed).toBe(false);
     expect(result.proof[0]).not.toBe(PASS_SENTINEL);
+  });
+});
+
+describe("runJob", () => {
+  test("surfaces the real runner transcript and binds deliveries to the three payees", async () => {
+    const result = await runJob({
+      spec: COMMON.spec,
+      payees: PAYEES,
+      agents: agentsProducing("export function add(a, b) { return a + b; }"),
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.transcript.length).toBeGreaterThan(0);
+    expect(result.deliveries.map((d) => d.agent)).toEqual([
+      PAYEES.codegen,
+      PAYEES.testwriter,
+      PAYEES.reviewer,
+    ]);
+    expect(result.artifacts.code).toContain("export function add");
+  });
+
+  test("withInjectedFault makes the REAL runner reject otherwise-correct code", async () => {
+    const result = await runJob({
+      spec: COMMON.spec,
+      payees: PAYEES,
+      agents: withInjectedFault(agentsProducing("export function add(a, b) { return a + b; }")),
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.artifacts.code.startsWith(INJECTED_FAULT)).toBe(true);
   });
 });

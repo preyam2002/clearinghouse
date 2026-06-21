@@ -2,6 +2,7 @@
 module clearinghouse::settlement_tests;
 
 use clearinghouse::job::{Self, Job};
+use clearinghouse::reputation::{Self, Registry};
 use clearinghouse::settlement;
 use sui::coin::{Self, Coin};
 use sui::hash;
@@ -41,8 +42,21 @@ fun fail_proof(blobs: vector<vector<u8>>): vector<u8> {
 
 fun post(scenario: &mut ts::Scenario, budget: u64, payees: vector<address>, weights: vector<u64>) {
     let ctx = ts::ctx(scenario);
+    reputation::create_registry(ctx);
     let payment = coin::mint_for_testing<SUI>(budget, ctx);
     job::post_job<SUI>(payment, payees, weights, 0, ctx);
+}
+
+fun settle_with_registry(
+    job: Job<SUI>,
+    s: settlement::Settlement,
+    proof: vector<u8>,
+    scenario: &mut ts::Scenario,
+): vector<address> {
+    let mut registry = ts::take_shared<Registry>(scenario);
+    let payees = settlement::settle(job, s, proof, &mut registry, ts::ctx(scenario));
+    ts::return_shared(registry);
+    payees
 }
 
 fun balance_of(scenario: &ts::Scenario, who: address): u64 {
@@ -139,7 +153,7 @@ fun test_settle_pays_all_when_predicate_passes() {
         settlement::deliver(&mut s, &job, A2, b"d2");
         settlement::deliver(&mut s, &job, A3, b"d3");
         let proof = pass_proof(vector[b"d1", b"d2", b"d3"]);
-        let _payees = settlement::settle(job, s, proof, ts::ctx(&mut scenario));
+        let _payees = settle_with_registry(job, s, proof, &mut scenario);
     };
 
     ts::next_tx(&mut scenario, ORCH);
@@ -164,7 +178,7 @@ fun test_settle_payouts_match_weights() {
         settlement::deliver(&mut s, &job, A2, b"tests");
         settlement::deliver(&mut s, &job, A3, b"review");
         let proof = pass_proof(vector[b"code", b"tests", b"review"]);
-        let _payees = settlement::settle(job, s, proof, ts::ctx(&mut scenario));
+        let _payees = settle_with_registry(job, s, proof, &mut scenario);
     };
 
     ts::next_tx(&mut scenario, ORCH);
@@ -188,7 +202,7 @@ fun test_settle_aborts_when_one_receipt_missing() {
         settlement::deliver(&mut s, &job, A1, b"d1");
         settlement::deliver(&mut s, &job, A2, b"d2"); // A3 never delivered
         let proof = pass_proof(vector[b"d1", b"d2"]);
-        let _payees = settlement::settle(job, s, proof, ts::ctx(&mut scenario));
+        let _payees = settle_with_registry(job, s, proof, &mut scenario);
     };
     ts::end(scenario);
 }
@@ -208,7 +222,7 @@ fun test_settle_aborts_when_predicate_fails_escrow_untouched() {
         // All receipts present, but the runner reported FAIL -> settle must abort,
         // and Move's transactional semantics leave the escrow untouched.
         let proof = fail_proof(vector[b"d1", b"d2", b"d3"]);
-        let _payees = settlement::settle(job, s, proof, ts::ctx(&mut scenario));
+        let _payees = settle_with_registry(job, s, proof, &mut scenario);
     };
     ts::end(scenario);
 }

@@ -14,7 +14,8 @@
       "!.move-home",
       "!move/clearinghouse/.move-home",
       "!move/clearinghouse/build",
-      "!pnpm-lock.yaml"
+      "!pnpm-lock.yaml",
+      "!.claude"
     ]
   },
   "formatter": {
@@ -33,6 +34,11 @@
       "quoteStyle": "double",
       "semicolons": "always",
       "trailingCommas": "all"
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
     }
   }
 }

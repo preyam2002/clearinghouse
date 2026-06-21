@@ -14,7 +14,9 @@ module clearinghouse::settlement;
 
 use clearinghouse::job::{Self, Job};
 use clearinghouse::predicate;
+use clearinghouse::reputation::{Self, Registry};
 use sui::coin;
+use sui::hash;
 use sui::vec_map::{Self, VecMap};
 use sui::vec_set::{Self, VecSet};
 
@@ -70,24 +72,52 @@ public fun settle<CoinT>(
     job: Job<CoinT>,
     s: Settlement,
     proof: vector<u8>,
+    registry: &mut Registry,
     ctx: &mut TxContext,
 ): vector<address> {
-    // Destructure the potato — the sole consumer.
     let Settlement { job_id, receipts, deliverables } = s;
     assert!(job_id == object::id(&job), EJobMismatch);
-    // The §2/U2 receipt-count gate, generalized from `confirm_request`.
     assert!(receipts.length() == job.required_agents(), EMissingReceipt);
     assert!(
         predicate::check(job.predicate_kind(), &receipts, &deliverables, &proof),
         EPredicateFailed,
     );
+    payout(job, registry, ctx)
+}
 
-    // Only now release escrow: split by weight, last payee sweeps the remainder
-    // so no dust is trapped, and pay everyone in this same call.
+public(package) fun settle_verified<CoinT>(
+    job: Job<CoinT>,
+    s: Settlement,
+    registry: &mut Registry,
+    ctx: &mut TxContext,
+): vector<address> {
+    let Settlement { job_id, receipts, deliverables: _ } = s;
+    assert!(job_id == object::id(&job), EJobMismatch);
+    assert!(receipts.length() == job.required_agents(), EMissingReceipt);
+    payout(job, registry, ctx)
+}
+
+public(package) fun deliverables_digest(s: &Settlement): vector<u8> {
+    let mut buf = vector<u8>[];
+    let mut i = 0;
+    while (i < s.deliverables.length()) {
+        let (_agent, deliverable) = s.deliverables.get_entry_by_idx(i);
+        buf.append(*deliverable);
+        i = i + 1;
+    };
+    hash::keccak256(&buf)
+}
+
+fun payout<CoinT>(
+    job: Job<CoinT>,
+    registry: &mut Registry,
+    ctx: &mut TxContext,
+): vector<address> {
     let (mut budget, payees, weights) = job.consume();
     let total_weight = sum(&weights);
     let total_value = budget.value();
     let n = payees.length();
+    let mut payouts = vector[];
     let mut i = 0;
     while (i < n) {
         let amount = if (i + 1 == n) {
@@ -95,11 +125,13 @@ public fun settle<CoinT>(
         } else {
             mul_div(total_value, weights[i], total_weight)
         };
+        payouts.push_back(amount);
         let part = budget.split(amount);
         transfer::public_transfer(coin::from_balance(part, ctx), payees[i]);
         i = i + 1;
     };
     budget.destroy_zero();
+    reputation::record_settlement(registry, &payees, &payouts, ctx);
     payees
 }
 

@@ -1,5 +1,12 @@
 # Clearinghouse — Build Plan (Codex-executable, end-to-end)
 
+> **⚠️ STATUS (2026-06-09): Phase 1 + reputation + attestation verifier + MCP adapter are BUILT and verified**
+> — Move 30/30, TS 30/30, dapp builds, MCP smoke passes, and the revert/settle/reputation demo is
+> **proven on localnet** with real digests. **Start at `AGENTS.md` then `TODO.md`** for current state,
+> gotchas, and what's next. This plan remains the master design + the remaining Phase 3/4
+> roadmap, but **the tested code in `move/`, `packages/`, `scripts/`, `app/` is the source of
+> truth** where it differs from this document.
+
 > **Audience: Codex (autonomous coding agent).** This is the complete plan to build Clearinghouse from scratch and ship it to Sui Overflow 2026 (Agentic Web track), deadline **June 21, 2026 PT**. Execute phases in order. Every task has a TDD note where sensible, an explicit **Acceptance Criterion (AC)**, and the **exact verification command**. Do not advance to a phase until the prior phase's AC commands all pass. **Phase 1 is the self-contained submittable core** — if time runs out after Phase 1, the project is still a complete, winnable submission.
 
 ---
@@ -218,8 +225,9 @@ clearinghouse/
 ### Phase 4 — Ecosystem interop + polish + submission (≈2–3 days)
 
 **4.1 MCP + x402 interop.** Expose Clearinghouse as an **MCP server** (`packages/agents/src/mcp.ts`) with tools `post_job`, `deliver`, `settle`, `get_reputation` so any MCP-speaking agent/host can hire a team through it. Add an **x402-style** payment-required entry path (HTTP 402 → on-chain settle) so it slots into the agent-payments narrative and differentiates from SweeFi/s402 by being verifier-enforced and atomic. (Scope: thin, demonstrable adapters — not a full spec implementation.)
-  - **AC:** an MCP client can drive a full post→deliver→settle against localnet through the server.
-  - **Verify:** `pnpm tsx scripts/demo-mcp.ts`
+  - **Status:** implemented as a stdio MCP server plus deterministic x402-style `402 → settle` payload builder. The server returns wallet/sponsor-signable transaction plans; it intentionally does not custody keys.
+  - **AC:** an MCP client can list/call the tools and build the post→deliver→settle payload path through the server.
+  - **Verify:** `pnpm demo:mcp`
 **4.2 Polish + the demo video.** Tighten the dapp (loading/abort/success states, explorer links, the agent résumé page). Record the timed demo (§6) showing the **mainnet** revert-then-settle and the reputation graph updating.
   - **AC:** a ≤3-min video that lands the jaw-drop and shows real mainnet digests.
 **4.3 DeepSurge submission.** Submit to Sui Overflow 2026 **Agentic Web** track via **DeepSurge** (`deepsurge.xyz/hackathons/...`): repo link, README, the two mainnet digests, video, and a short "what's trustless vs. attested" honesty paragraph. Confirm submission window (user-authoritative deadline **June 21, 2026 PT**) — submit with buffer.
@@ -266,4 +274,4 @@ clearinghouse/
 
 **Phase 3 (quality depth):** `attested.move` verifies an `enclave::verify_signature` over a `WorkAttestation` and settles on a quality threshold; tamper → abort; round-trip script prints a digest (enclave registration may be testnet, settlement on mainnet — noted).
 
-**Phase 4 (ecosystem + ship):** MCP server drives a full post→deliver→settle; x402-style entry path demonstrated; ≤3-min demo video with mainnet digests; **submitted to Sui Overflow 2026 Agentic Web track on DeepSurge before June 21, 2026 PT, deployed on mainnet.**
+**Phase 4 (ecosystem + ship):** MCP/x402 adapter demonstrated; ≤3-min demo video with mainnet digests; **submitted to Sui Overflow 2026 Agentic Web track on DeepSurge before June 21, 2026 PT, deployed on mainnet.**

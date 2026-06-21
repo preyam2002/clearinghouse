@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { AgentBundle } from "./orchestrator";
 
 /** Minimal structural surface of the Anthropic client used here, so the
  *  orchestrator and unit tests can inject a fake without a real API key. */
@@ -88,4 +89,14 @@ export async function reviewer(
     prompt: `Implementation:\n${code}\n\nTests:\n${tests}`,
     model: MODELS.reviewer,
   });
+}
+
+/** The real three-agent bundle wired to a live Anthropic client. No scenarios,
+ *  no scripted outputs — each agent does its genuine job and the runner judges. */
+export function makeAnthropicAgents(client: AnthropicLike): AgentBundle {
+  return {
+    codegen: (spec) => codegen(client, spec),
+    testwriter: (spec) => testwriter(client, spec),
+    reviewer: (code, tests) => reviewer(client, code, tests),
+  };
 }

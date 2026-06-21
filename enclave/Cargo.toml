@@ -1,0 +1,39 @@
+[package]
+name = "clearinghouse-grader"
+version = "0.1.0"
+edition = "2021"
+description = "Nautilus (AWS Nitro) enclave grader for the Clearinghouse attested-quality path"
+
+[lib]
+name = "clearinghouse_grader"
+path = "src/lib.rs"
+
+[[bin]]
+name = "clearinghouse-grader"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+bcs = "0.1.6"
+sha3 = "0.10"
+ed25519-dalek = "2"
+hex = "0.4"
+getrandom = "0.2"
+axum = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+serde_json = "1"
+tempfile = "3"
+wait-timeout = "0.2"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+serde_bytes = { version = "0.11", optional = true }
+
+# Nitro-only. Pulled in (and the NSM attestation path compiled) ONLY with
+# `--features nitro`, which is how the enclave image is built. Left out of the
+# default build so the crypto core compiles + tests on any host (macOS/CI).
+[target.'cfg(target_os = "linux")'.dependencies]
+aws-nitro-enclaves-nsm-api = { version = "0.4", optional = true }
+
+[features]
+default = []
+nitro = ["dep:aws-nitro-enclaves-nsm-api", "dep:serde_bytes"]

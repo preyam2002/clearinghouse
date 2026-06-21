@@ -1,6 +1,13 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, test, vi } from "vitest";
-import { type AnthropicLike, callAgent, codegen, MODELS } from "../src/anthropic.js";
+import {
+  type AnthropicLike,
+  callAgent,
+  codegen,
+  MODELS,
+  makeAnthropicAgents,
+} from "../src/anthropic.js";
+import { INJECTED_FAULT, withInjectedFault } from "../src/orchestrator.js";
 
 type CreateBody = Anthropic.Messages.MessageCreateParamsNonStreaming;
 type SystemBlocks = Anthropic.Messages.TextBlockParam[];
@@ -39,5 +46,30 @@ describe("codegen", () => {
     const out = await codegen(client, "make x");
     expect(out).toBe("export const x = 1;");
     expect(create.mock.calls[0]?.[0].model).toBe(MODELS.codegen);
+  });
+});
+
+describe("makeAnthropicAgents", () => {
+  test("passes the spec through verbatim to every agent — no scripted scenarios", async () => {
+    const { client, create } = mockClient("ok");
+    const agents = makeAnthropicAgents(client);
+
+    await agents.codegen("implement add(a, b)");
+    await agents.testwriter("implement add(a, b)");
+
+    expect(String(create.mock.calls[0]?.[0].messages[0]?.content)).toBe("implement add(a, b)");
+    expect(String(create.mock.calls[1]?.[0].messages[0]?.content)).toBe("implement add(a, b)");
+  });
+});
+
+describe("withInjectedFault", () => {
+  test("prepends a real fault to codegen output and leaves the other agents intact", async () => {
+    const { client } = mockClient("export function add(a, b) { return a + b; }");
+    const faulted = withInjectedFault(makeAnthropicAgents(client));
+
+    const code = await faulted.codegen("implement add(a, b)");
+    expect(code.startsWith(INJECTED_FAULT)).toBe(true);
+    expect(code).toContain("export function add");
+    expect(await faulted.reviewer("c", "t")).toBe("export function add(a, b) { return a + b; }");
   });
 });

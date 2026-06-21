@@ -21,8 +21,37 @@ export interface PostJobParams {
 export interface SettleParams {
   packageId: string;
   jobId: string;
+  registryId: string;
   coinType: string;
   /** Deliveries in the SAME order used to compute `proof`'s commitment. */
   deliveries: Delivery[];
   proof: Uint8Array;
+}
+
+export interface AttestedSettleParams {
+  packageId: string;
+  jobId: string;
+  registryId: string;
+  enclaveId: string;
+  coinType: string;
+  deliveries: Delivery[];
+  deliverablesDigest: Uint8Array;
+  qualityScore: number | bigint;
+  minScore: number | bigint;
+  intentScope: number;
+  timestampMs: number | bigint;
+  signature: Uint8Array;
+}
+
+export interface AgentRecord {
+  agent: string;
+  jobsSettled: number;
+  totalEarned: bigint;
+  counterparties: string[];
+  lastSettledEpoch: bigint;
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
 }

@@ -24,14 +24,35 @@ export function loadKeypair(): Ed25519Keypair {
   return secret ? Ed25519Keypair.fromSecretKey(fromBase64(secret)) : Ed25519Keypair.generate();
 }
 
-/** Ensure `address` has gas. No-op on mainnet (no faucet). */
+export interface Deployment {
+  packageId: string;
+  registryId: string;
+}
+
+/** Ensure `address` has gas. No-op on mainnet (no faucet). The public faucet is
+ *  rate-limited with a short sliding cooldown under contention, so retry on 429s
+ *  with backoff instead of failing on the first one. */
 export async function ensureFunded(c: SuiJsonRpcClient, address: string): Promise<void> {
   const net = network();
   if (net === "mainnet") return;
   const current = BigInt((await c.getBalance({ owner: address })).totalBalance);
   if (current > 1_000_000_000n) return;
-  await requestSuiFromFaucetV2({ host: getFaucetHost(net), recipient: address });
-  for (let i = 0; i < 40; i++) {
+
+  const maxAttempts = 15;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      await requestSuiFromFaucetV2({ host: getFaucetHost(net), recipient: address });
+      break;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const rateLimited = /rate.?limit|too many|429/i.test(msg);
+      if (!rateLimited || attempt === maxAttempts - 1) throw error;
+      console.log(`faucet rate-limited (attempt ${attempt + 1}/${maxAttempts}); backing off…`);
+      await new Promise((resolve) => setTimeout(resolve, 7000));
+    }
+  }
+
+  for (let i = 0; i < 60; i++) {
     const balance = BigInt((await c.getBalance({ owner: address })).totalBalance);
     if (balance > 0n) return;
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -43,10 +64,19 @@ export async function ensureFunded(c: SuiJsonRpcClient, address: string): Promis
 export async function publishPackage(
   c: SuiJsonRpcClient,
   keypair: Ed25519Keypair,
-): Promise<string> {
+): Promise<Deployment> {
+  const buildEnv = network() === "mainnet" ? "mainnet" : "testnet";
   const raw = execFileSync(
     "sui",
-    ["move", "build", "--dump-bytecode-as-base64", "--path", "move/clearinghouse"],
+    [
+      "move",
+      "build",
+      "--build-env",
+      buildEnv,
+      "--dump-bytecode-as-base64",
+      "--path",
+      "move/clearinghouse",
+    ],
     {
       cwd: repoRoot,
       encoding: "utf8",
@@ -77,7 +107,16 @@ export async function publishPackage(
   if (!published || !("packageId" in published)) {
     throw new Error("publish result had no packageId");
   }
-  return published.packageId;
+  const registry = res.objectChanges?.find(
+    (change) =>
+      change.type === "created" &&
+      "objectType" in change &&
+      change.objectType === `${published.packageId}::reputation::Registry`,
+  );
+  if (!registry || !("objectId" in registry)) {
+    throw new Error("publish result had no reputation Registry object");
+  }
+  return { packageId: published.packageId, registryId: registry.objectId };
 }
 
 /** Explorer link for a tx digest (Suiscan on public nets; plain note on localnet). */

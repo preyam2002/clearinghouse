@@ -1,11 +1,18 @@
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { type AgentBundle, assembleSettlement } from "@clearinghouse/agents";
-import { buildPostJobTx } from "@clearinghouse/sdk";
+import {
+  type AgentBundle,
+  assembleSettlement,
+  makeAnthropic,
+  makeAnthropicAgents,
+  withInjectedFault,
+} from "@clearinghouse/agents";
+import { type AgentRecord, buildPostJobTx, getAgentRecord } from "@clearinghouse/sdk";
 import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import {
   client,
+  type Deployment,
   ensureFunded,
   explorerUrl,
   loadKeypair,
@@ -15,27 +22,15 @@ import {
   SUI,
 } from "./sui.js";
 
-// One job: implement + test + review. The on-chain mechanism is identical for
-// both runs — only the delivered code differs (broken vs. fixed).
-const TESTS =
-  'import { add } from "./solution.mjs";\n' +
-  'import test from "node:test";\n' +
-  'import assert from "node:assert/strict";\n' +
-  'test("adds", () => { assert.equal(add(2, 3), 5); });\n';
-const GOOD_CODE = "export function add(a, b) { return a + b; }\n";
-const BROKEN_CODE = "export function add(a, b) { return a - b; }\n";
+// One real job: the three live agents implement + test + review it. The on-chain
+// mechanism is identical for both runs — the only difference is that the revert
+// run wraps codegen with an injected fault, so the real runner genuinely rejects
+// the delivery. Nothing about either verdict is scripted.
+const SPEC = "Implement add(a, b) that returns the sum of two numbers.";
 
 const BUDGET = 30_000_000n; // 0.03 SUI
 const WEIGHTS = [50, 30, 20];
 const EXPECTED_PAYOUTS = ["15000000", "9000000", "6000000"]; // 50/30/20 of the budget
-
-function stubAgents(code: string): AgentBundle {
-  return {
-    codegen: async () => code,
-    testwriter: async () => TESTS,
-    reviewer: async () => "Reviewed: implementation matches the spec.",
-  };
-}
 
 interface Scenario {
   label: string;
@@ -44,6 +39,7 @@ interface Scenario {
   onChainSuccess: boolean;
   abortError: string | undefined;
   payouts: string[];
+  records: (AgentRecord | null)[];
   explorer: string;
 }
 
@@ -84,23 +80,24 @@ async function postJob(
 async function runScenario(
   c: SuiJsonRpcClient,
   keypair: Ed25519Keypair,
-  packageId: string,
+  deployment: Deployment,
   label: string,
-  code: string,
+  agents: AgentBundle,
 ): Promise<Scenario> {
   const codegenAddr = Ed25519Keypair.generate().toSuiAddress();
   const testwriterAddr = Ed25519Keypair.generate().toSuiAddress();
   const reviewerAddr = Ed25519Keypair.generate().toSuiAddress();
   const payees = [codegenAddr, testwriterAddr, reviewerAddr];
-  const jobId = await postJob(c, keypair, packageId, payees);
+  const jobId = await postJob(c, keypair, deployment.packageId, payees);
 
   const { passed, tx } = await assembleSettlement({
-    packageId,
+    packageId: deployment.packageId,
+    registryId: deployment.registryId,
     jobId,
     coinType: SUI,
-    spec: "implement add(a, b)",
+    spec: SPEC,
     payees: { codegen: codegenAddr, testwriter: testwriterAddr, reviewer: reviewerAddr },
-    agents: stubAgents(code),
+    agents,
   });
   tx.setGasBudget(100_000_000n);
 
@@ -125,6 +122,9 @@ async function runScenario(
   for (const address of payees) {
     payouts.push((await c.getBalance({ owner: address, coinType: SUI })).totalBalance);
   }
+  const records = await Promise.all(
+    payees.map((address) => getAgentRecord(c, deployment.registryId, address)),
+  );
 
   return {
     label,
@@ -133,8 +133,19 @@ async function runScenario(
     onChainSuccess,
     abortError,
     payouts,
+    records,
     explorer: explorerUrl(digest),
   };
+}
+
+function envDeployment(): Deployment | undefined {
+  const packageId = process.env.PACKAGE_ID;
+  if (!packageId) return undefined;
+  const registryId = process.env.REGISTRY_ID;
+  if (!registryId) {
+    throw new Error("REGISTRY_ID is required when PACKAGE_ID is set");
+  }
+  return { packageId, registryId };
 }
 
 async function main() {
@@ -142,13 +153,25 @@ async function main() {
   const c = client();
   const keypair = loadKeypair();
   console.log(`Orchestrator ${keypair.toSuiAddress()} on ${net}`);
+  const anthropic = makeAnthropic(); // throws clearly if ANTHROPIC_API_KEY is missing
+  const realAgents = makeAnthropicAgents(anthropic);
+  console.log("Agents: live Anthropic (codegen + testwriter = sonnet, reviewer = haiku)\n");
 
   await ensureFunded(c, keypair.toSuiAddress());
-  const packageId = process.env.PACKAGE_ID ?? (await publishPackage(c, keypair));
-  console.log(`Package ${packageId}\n`);
+  const deployment = envDeployment() ?? (await publishPackage(c, keypair));
+  console.log(`Package ${deployment.packageId}`);
+  console.log(`Registry ${deployment.registryId}\n`);
 
-  const revert = await runScenario(c, keypair, packageId, "revert (broken code)", BROKEN_CODE);
-  const settle = await runScenario(c, keypair, packageId, "settle (fixed code)", GOOD_CODE);
+  // Same agents, same runner — the revert run injects a real fault into the
+  // delivery so the runner genuinely rejects it.
+  const revert = await runScenario(
+    c,
+    keypair,
+    deployment,
+    "revert (faulty delivery)",
+    withInjectedFault(realAgents),
+  );
+  const settle = await runScenario(c, keypair, deployment, "settle (real delivery)", realAgents);
 
   // Self-verification: same code path, opposite outcomes.
   const failures: string[] = [];
@@ -156,6 +179,7 @@ async function main() {
   if (revert.onChainSuccess) failures.push("revert: settle SUCCEEDED but should have aborted");
   if (revert.payouts.some((b) => b !== "0"))
     failures.push(`revert: a payee was paid (${revert.payouts})`);
+  if (revert.records.some(Boolean)) failures.push("revert: reputation record was created");
   // The abort MUST be EPredicateFailed (code 3) in settle — not gas or another abort.
   const abortedOnPredicate =
     (revert.abortError ?? "").includes('"settle"') && (revert.abortError ?? "").includes(", 3)");
@@ -171,11 +195,22 @@ async function main() {
       failures.push(`settle: payout ${i} = ${balance}, expected ${EXPECTED_PAYOUTS[i]}`);
     }
   });
+  settle.records.forEach((record, i) => {
+    if (!record) {
+      failures.push(`settle: reputation record ${i} missing`);
+    } else if (record.jobsSettled !== 1 || record.totalEarned.toString() !== EXPECTED_PAYOUTS[i]) {
+      failures.push(
+        `settle: record ${i} jobs=${record.jobsSettled} earned=${record.totalEarned}, expected jobs=1 earned=${EXPECTED_PAYOUTS[i]}`,
+      );
+    } else if (record.counterparties.length !== 2) {
+      failures.push(`settle: record ${i} counterparty count = ${record.counterparties.length}`);
+    }
+  });
 
-  const artifact = { network: net, packageId, revert, settle, generatedBy: "scripts/demo.ts" };
+  const artifact = { network: net, ...deployment, revert, settle, generatedBy: "scripts/demo.ts" };
   writeFileSync(
     path.join(repoRoot, "scripts", "last-demo.json"),
-    `${JSON.stringify(artifact, null, 2)}\n`,
+    `${JSON.stringify(artifact, (_key, value) => (typeof value === "bigint" ? value.toString() : value), 2)}\n`,
   );
 
   console.log(
@@ -192,7 +227,7 @@ async function main() {
     process.exitCode = 1;
   } else {
     console.log(
-      "\n✓ Same code path, two outcomes: broken → settle aborted (escrow untouched, nobody paid); fixed → all three paid atomically.",
+      "\n✓ Live agents, one settle path, two real outcomes: faulty delivery → runner fails → settle aborted (escrow untouched, nobody paid); real delivery → runner passes → all three paid atomically.",
     );
   }
 }

@@ -35,11 +35,11 @@ This is forked directly from Sui's own `sui::transfer_policy` receipt-counting p
 
 Deterministic checks ("do the tests pass?") settle trustlessly on-chain. But most real agent work is about *quality*, which isn't a pure function. So Clearinghouse can run the agreed work inside an **AWS Nitro enclave (Sui Nautilus)** that signs an attested result the Move contract verifies before settling. Now you can settle on a graded quality score, not just a boolean — and the grade came from code whose exact image was cryptographically attested, not from a backend you have to trust.
 
-(We reuse a production Nautilus co-signer enclave already built and registered on Sui — see Layer 3 in the build plan — so this is real, not a slide.)
+The grader is a real Rust Nautilus enclave in [`enclave/`](./enclave): it runs the delivered tests *inside* the Nitro enclave and signs a `WorkAttestation`. Its signing is proven **byte-for-byte compatible with the on-chain verifier** by host tests (`cd enclave && cargo test` checks the BCS framing against the Move vectors, the pinned ed25519 signature, and the keccak digest), so signatures it emits verify in `settle_attested`. Live registration + signing needs an AWS Nitro host — see [`enclave/README.md`](./enclave/README.md).
 
 ### 3. Portable on-chain reputation graph — the moat
 
-Here's the part that compounds. **Every settled job becomes a permanent, un-fakeable record of work an agent actually did.** Soulbound, per-agent, on-chain. Over months, that becomes a portable **reputation graph**: a credit score and résumé for AI agents — settled-job count, success rate, attested-quality history, which agents an agent successfully *teams with*.
+Here's the part that compounds. **Every settled job becomes a permanent, un-fakeable record of work an agent actually did.** The shared on-chain registry records settled-job count, earnings, and which agents an agent successfully *teams with*. Over months, that becomes a portable **reputation graph**: a credit score and résumé for AI agents.
 
 You can't fake it, because it's tied to real settled (and attested) work, not self-reported stars. An orchestrator picking a team can read it on-chain before hiring. This is a **data and network-effect moat**: the more jobs clear through Clearinghouse, the more valuable the graph, and the harder it is for anyone to copy — because they'd have to re-accumulate the history.
 
@@ -51,12 +51,12 @@ An orchestrator posts one job: *"Implement this function, write tests for it, re
 2. **Test-writer agent** — writes a test suite.
 3. **Reviewer agent** — reviews and annotates.
 
-The aggregate predicate is brutally objective: **the delivered tests must pass against the delivered code.** We run it twice, live, on **Sui mainnet**:
+The aggregate predicate is brutally objective: **the delivered tests must pass against the delivered code.** We run it twice, live, on **Sui testnet** — both transactions are real and open in an explorer:
 
-- **Take 1 (revert):** the code-gen agent ships a subtly broken implementation. Tests fail. We call `settle()`. The transaction **reverts** — on-chain, with a real digest you can open in an explorer. Nobody gets paid. The budget is still in escrow.
-- **Take 2 (settle):** the implementation is fixed. Tests pass. `settle()` succeeds — all three agents are paid in **one transaction**, and three soulbound reputation records are minted. Real digest, real explorer link.
+- **Take 1 (revert):** the delivery is corrupted by an injected fault (a stand-in for a broken/adversarial agent). The real runner runs it, the tests fail, and we call `settle()`. The transaction **reverts** with `EPredicateFailed` — nobody gets paid, the budget is still in escrow. → [`CyFPpHff…6A22` ↗](https://suiscan.xyz/testnet/tx/CyFPpHffEZYHiQAMaZeAnsLwbbQTpV7W5p4GqBxi6A22)
+- **Take 2 (settle):** the implementation is fixed. Tests pass. `settle()` succeeds — all three agents are paid **50/30/20 in one transaction**, and the reputation registry updates all three records with their mutual teams-with edges. → [`GcJLWfmC…B2vX` ↗](https://suiscan.xyz/testnet/tx/GcJLWfmCyE4MmaWDUtKBuYVQ3bnWKv9ibcb8TrJwB2vX)
 
-Same code path, two outcomes, enforced by the chain. That's the jaw-drop.
+Same code path, two outcomes, enforced by the chain. That's the jaw-drop. (Mainnet is one funded-wallet command away — `SUI_NETWORK=mainnet … pnpm tsx scripts/demo.ts` — but the trustless guarantee is identical on testnet.)
 
 ## Why this wins (and why it's defensible)
 
@@ -64,7 +64,7 @@ The honest competitive picture:
 
 | | Atomic multi-party settle | Verifier-enforced in **one** PTB | Attestation-backed quality | Reputation graph | Chain |
 |---|---|---|---|---|---|
-| **Clearinghouse** | ✅ N-party | ✅ hot potato | ✅ Nautilus TEE | ✅ soulbound, from settled work | **Sui** |
+| **Clearinghouse** | ✅ N-party | ✅ hot potato | ✅ Nautilus TEE | ✅ registry-backed, from settled work | **Sui** |
 | XAP | partial | ❌ off-chain (Python) | ❌ | ❌ | off-chain |
 | Virtuals **ACP** (live on Base) | ✅ | ❌ evaluator-gated, off-PTB | ❌ | partial | Base |
 | SweeFi / s402 | "split" on roadmap | ❌ | ❌ | ❌ | Sui |
@@ -77,4 +77,56 @@ Fully **trustless settlement only works for deterministic predicates** (tests pa
 
 ## Status
 
-From-scratch build for Sui Overflow 2026 (deadline **June 21, 2026 PT**). **Mainnet-deployable with no testnet-only dependency** — and since half the prize unlocks on mainnet, we target mainnet from day one. Phase 1 is a self-contained, submittable core (atomic settlement + the revert-then-settle demo on mainnet). Phases 2–4 add the reputation graph, TEE-attested quality, and ecosystem interop. Full plan: [`BUILD_PLAN.md`](./BUILD_PLAN.md).
+**Phase 1 + the reputation graph + the attestation verifier + MCP/x402 adapter are built and
+verified, and the work pipeline is fully real — no fixtures.** The dapp and the demo run three
+**live Anthropic agents** through a sandboxed `node --test` runner; the runner's genuine verdict
+becomes the on-chain predicate proof. The revert-then-settle demo is **proven on Sui testnet** with
+real digests — same settle path, two real outcomes, plus records for the successful team. The
+Nitro grader for the attested-quality path is built ([`enclave/`](./enclave)) and its signing is
+proven chain-compatible by host tests.
+
+| Layer | Verify | Result |
+|---|---|---|
+| Move core + reputation + attestation verifier | `pnpm test:move` | 31/31 |
+| SDK + agents + MCP + preflight | `pnpm test` | 42/42 |
+| Nitro grader (BCS/sig/digest chain-compat) | `cd enclave && cargo test` | 6/6 |
+| dapp (real agents via `/api/run`) | `pnpm --filter app build` | builds clean |
+| revert/settle demo (live agents) | `SUI_NETWORK=testnet pnpm tsx scripts/demo.ts` | aborts on faulty delivery; pays 50/30/20 and records reputation on a real pass |
+| MCP/x402 smoke | `pnpm demo:mcp` | MCP client lists/calls post_job, deliver, settle, get_reputation, x402 |
+
+### Live on Sui testnet
+
+| Artifact | Value |
+|---|---|
+| Package | [`0xbca52b…3b697`](https://suiscan.xyz/testnet/object/0xbca52b9a08df1987774afa382b230efd0df903e25ef175f4a3112908a4d3b697) |
+| Reputation registry | [`0xd01b1c…2c262`](https://suiscan.xyz/testnet/object/0xd01b1cb0fa0cbab9b95dc1fe2788de093ebc5465de6149f8caf17247c662c262) |
+| Settle tx (3-payee 50/30/20 + reputation) | [`GcJLWfmC…B2vX`](https://suiscan.xyz/testnet/tx/GcJLWfmCyE4MmaWDUtKBuYVQ3bnWKv9ibcb8TrJwB2vX) |
+| Revert tx (`EPredicateFailed`, escrow intact) | [`CyFPpHff…6A22`](https://suiscan.xyz/testnet/tx/CyFPpHffEZYHiQAMaZeAnsLwbbQTpV7W5p4GqBxi6A22) |
+
+Both digests are reproducible — `scripts/last-demo.json` captures the full run.
+
+Remaining (all external-gated): a funded-wallet **mainnet** artifact (the half-prize unlock; the
+deploy + demo is one command on a funded wallet), and a live enclave registration on an AWS Nitro
+host. The agents call Anthropic, so the demo and the dapp need `ANTHROPIC_API_KEY`. **Agents/Codex:
+start at [`AGENTS.md`](./AGENTS.md), then [`TODO.md`](./TODO.md).** Full design + a ≤3-min demo
+storyboard: [`BUILD_PLAN.md`](./BUILD_PLAN.md) · [`DEMO.md`](./DEMO.md).
+
+### Quickstart
+
+```bash
+pnpm install
+pnpm test && pnpm test:move          # 36 TS + 31 Move tests
+pnpm demo:mcp                       # MCP client/server smoke
+pnpm --filter app build              # build the dapp
+cd enclave && cargo test && cd ..    # grader crypto matches the chain
+
+# End-to-end on a throwaway local chain (live agents; needs ANTHROPIC_API_KEY):
+mkdir -p .sui-local
+sui genesis --working-dir .sui-local --with-faucet --force
+sui start --network.config .sui-local --with-faucet &
+ANTHROPIC_API_KEY=... SUI_NETWORK=localnet pnpm tsx scripts/demo.ts   # real revert + settle digests
+
+# The dapp, pointed at a deployment, runs the same real agents via its /api/run route:
+ANTHROPIC_API_KEY=... NEXT_PUBLIC_PACKAGE_ID=0x.. NEXT_PUBLIC_REGISTRY_ID=0x.. \
+  NEXT_PUBLIC_SUI_NETWORK=localnet pnpm --filter app dev
+```

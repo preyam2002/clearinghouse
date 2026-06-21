@@ -8,6 +8,7 @@ const enc = (s: string) => new TextEncoder().encode(s);
 const COIN = "0x2::sui::SUI";
 const PKG = "0xcafe";
 const JOB = "0x1234";
+const REGISTRY = "0x5678";
 
 const DELIVERIES: Delivery[] = [
   { agent: "0xa1", deliverable: enc("code") },
@@ -38,6 +39,7 @@ describe("buildSettlePTB", () => {
     const tx = buildSettlePTB({
       packageId: PKG,
       jobId: JOB,
+      registryId: REGISTRY,
       coinType: COIN,
       deliveries: DELIVERIES,
       proof,
@@ -65,6 +67,7 @@ describe("buildSettlePTB", () => {
     const tx = buildSettlePTB({
       packageId: PKG,
       jobId: JOB,
+      registryId: REGISTRY,
       coinType: COIN,
       deliveries: DELIVERIES,
       proof,
@@ -83,6 +86,7 @@ describe("buildSettlePTB", () => {
     const tx = buildSettlePTB({
       packageId: PKG,
       jobId: JOB,
+      registryId: REGISTRY,
       coinType: COIN,
       deliveries: DELIVERIES,
       proof,
@@ -93,5 +97,24 @@ describe("buildSettlePTB", () => {
       .inputs.filter((i: AnyCmd) => i.$kind === "Pure")
       .map(pureBytes);
     expect(pures.some((p) => bytesEqual(p, expected))).toBe(true);
+  });
+
+  test("settle passes the registry object to the recorded settlement call", () => {
+    const proof = buildProof(
+      true,
+      DELIVERIES.map((d) => d.deliverable),
+    );
+    const tx = buildSettlePTB({
+      packageId: PKG,
+      jobId: JOB,
+      registryId: REGISTRY,
+      coinType: COIN,
+      deliveries: DELIVERIES,
+      proof,
+    });
+    const settleCall = tx.getData().commands.at(-1)?.MoveCall as AnyCmd;
+
+    expect(settleCall.function).toBe("settle");
+    expect(settleCall.arguments).toHaveLength(4);
   });
 });
