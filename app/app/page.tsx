@@ -26,7 +26,6 @@ import {
   buildExplorerTxUrl,
   calculateWeightedPayouts,
   DEFAULT_SPEC,
-  DEMO_REPLAY,
   formatSui,
   getAgentFlowState,
   PAYOUT_PRESETS,
@@ -366,8 +365,6 @@ export default function Home() {
         </div>
       </section>
 
-      <ProofReplay />
-
       {!configured && (
         <div className="reveal reveal-3 mt-6 notice notice-warn">
           <span className="field-label block mb-1 text-[var(--vermillion)]">Config required</span>
@@ -587,12 +584,6 @@ export default function Home() {
               <h2 className="section-index">02 — RUN AGENTS &amp; SETTLE</h2>
             </div>
             <div className="px-5 py-5">
-              <div className="mini-ledger">
-                <span className="field-label">Verifier</span>
-                <strong>Boolean runner live</strong>
-                <span>TEE quality lane built; Nitro registration is separate.</span>
-              </div>
-
               <AgentDesk
                 names={displayAgentNames}
                 payees={payees}
@@ -904,89 +895,6 @@ function AgentDesk({
         })}
       </div>
     </div>
-  );
-}
-
-function ProofReplay() {
-  return (
-    <section className="reveal reveal-3 mt-8 panel proof-replay" aria-label="Testnet proof replay">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b-[1.5px] border-[var(--ink)] px-5 py-3">
-        <h2 className="section-index">PROVEN TESTNET REPLAY</h2>
-        <a href="/agents" className="field-label text-[var(--cobalt)] hover:underline">
-          browse reputation →
-        </a>
-      </div>
-      <div className="grid gap-0 lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="proof-copy px-5 py-5">
-          <span className="field-label">Zero-wallet path</span>
-          <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-            These are real Sui testnet transactions from the current package. One run intentionally
-            failed the verifier and reverted. The clean run settled the same weighted team.
-          </p>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <ReplayDigest
-              label="Failed run"
-              digest={DEMO_REPLAY.revertDigest}
-              tone="revert"
-              caption="predicate abort"
-            />
-            <ReplayDigest
-              label="Settled run"
-              digest={DEMO_REPLAY.settleDigest}
-              tone="settle"
-              caption="paid 50/30/20"
-            />
-          </div>
-          <div className="mt-4 mini-ledger">
-            <span className="field-label">Attested quality</span>
-            <strong>Nitro grader built</strong>
-            <span>
-              Boolean runner is live here; 0–100 TEE scoring is available through settle_attested.
-            </span>
-          </div>
-        </div>
-        <div className="proof-ledger border-t-[1.5px] border-[var(--ink)] px-5 py-5 lg:border-l-[1.5px] lg:border-t-0">
-          <span className="field-label">Replay ledger · paid agents</span>
-          <div className="mt-3 space-y-2">
-            {DEMO_REPLAY.agents.map((agent, i) => (
-              <a href={`/agent/${agent}`} className="replay-agent" key={agent}>
-                <span>
-                  <strong>{AGENT_ROLES[i].label}</strong>
-                  <em>{shortAddr(agent, 8, 6)}</em>
-                </span>
-                <b>{formatSui(DEMO_REPLAY.payoutsMist[i])}</b>
-              </a>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ReplayDigest({
-  label,
-  digest,
-  tone,
-  caption,
-}: {
-  label: string;
-  digest: string;
-  tone: "settle" | "revert";
-  caption: string;
-}) {
-  return (
-    <a
-      href={buildExplorerTxUrl(DEMO_REPLAY.network, digest)}
-      target="_blank"
-      rel="noreferrer"
-      className="replay-digest"
-      data-tone={tone}
-    >
-      <span>{label}</span>
-      <strong>{shortAddr(digest, 7, 6)}</strong>
-      <em>{caption}</em>
-    </a>
   );
 }
 

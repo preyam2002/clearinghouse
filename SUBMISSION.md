@@ -19,21 +19,46 @@
 
 ---
 
-## Short description
+## The problem (why this matters)
 
-When you hire a **team** of AI agents for one job, payment today is sequential off-chain trust: pay
-A, hope B's output fits, and you've often paid for half a job you can't use. Clearinghouse is the
-missing primitive: **one job, one escrowed budget, N agents, one settlement transaction.** Each
-agent's `deliver()` drops a receipt into a **`Settlement` hot potato** — a Move value the
-transaction physically cannot finish without consuming. `settle()` is its only consumer; it runs an
-on-chain verifier predicate and pays **all** agents by weight **only if** every receipt is present
-and the predicate passes. Any failure aborts the whole PTB with the escrow untouched. No custodian —
-the chain enforces atomicity. (Forked from Sui's own `transfer_policy` receipt-counting pattern.)
+Real work is increasingly done by **teams of specialized AI agents** — one writes, one verifies, one
+reviews. But paying that team still runs on trust: you pay each agent in sequence and hope the
+*combined* deliverable is usable. If one agent flakes or ships broken work, you've already paid for a
+job you can't ship — and nothing stops you from hiring that agent again, because there's no shared
+record of who actually does good work. As autonomous agents begin transacting at scale, the missing
+infrastructure is a **settlement and trust layer for agent teams.**
 
-On top of the settlement primitive: a **portable, soulbound reputation graph** — every settled job
-writes an un-fakeable record of who did real work and who they team well with — and an optional
-**TEE-attested quality** path (an AWS Nitro / Sui Nautilus enclave signs a graded `WorkAttestation`
-the contract verifies) for subjective work that isn't a pure boolean.
+## What Clearinghouse is
+
+One job, one escrowed budget, any number of agents, and **one atomic settlement on Sui.** The whole
+team is paid — together, in a single transaction — only if their combined work passes an on-chain
+verifier. Any failure reverts the entire payment and returns the escrow to the buyer. There's no
+custodian: each delivery drops a receipt into a Sui Move **hot potato** the transaction physically
+cannot finish without consuming, so settlement is all-or-nothing, enforced by the language itself (a
+generalization of Sui's own battle-tested `transfer_policy` receipt-counting pattern).
+
+## Real-world applications
+
+Any workflow where several agents contribute to one deliverable and you only want to pay for a
+correct *whole*:
+
+- **Code / test / review** (the demo): implement → test → review, paid only if the tests pass.
+- **Research**: gather → synthesize → fact-check, paid only if claims are sourced.
+- **Content**: draft → edit → fact-check, settled as one bundle.
+- **Data**: label → QA → audit pipelines.
+
+Deterministic checks settle fully trustlessly today; an optional **TEE-attested quality** lane (an
+AWS Nitro / Sui Nautilus enclave signs a graded result the contract verifies) extends the same rail
+to subjective work that isn't a pure boolean.
+
+## Long-term value — the moat
+
+Every settled job writes permanent, **soulbound on-chain reputation**: jobs completed, earnings, and
+which agents an agent successfully teams with. Over time that's a **credit score and résumé for AI
+agents** — the trust layer an orchestrator consults *before* hiring a team. It's a data /
+network-effect moat: the settlement primitive can be copied, but the accumulated history can't, and
+it compounds with every job. We produce it from job #1 — reputation isn't bolted on later, it's
+written by the core settlement path itself.
 
 ## What's built and verified
 
@@ -70,12 +95,6 @@ payout are chain-enforced and need no trust. The one trust assumption in the det
 into an attested Nitro enclave whose image is cryptographically verified before the contract accepts
 its score. We build the deterministic anchor first because it's provably correct, and layer
 quality-attestation on top — we don't oversell Phase 1 as trustless against a malicious prover.
-
-## Why it's defensible
-
-The settlement primitive is a feature others can chase. The **company is the reputation graph**: a
-soulbound, attestation-backed record of real settled work that deepens with every job and can't be
-forked — a competitor would have to re-accumulate the history. We instrument it from job #1.
 
 ## Tech stack
 

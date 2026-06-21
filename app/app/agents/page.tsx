@@ -3,6 +3,7 @@
 import { type AgentRecord, getAgentRecord } from "@clearinghouse/sdk";
 import { useSuiClient } from "@mysten/dapp-kit";
 import { useEffect, useMemo, useState } from "react";
+import { ProofReplay } from "@/components/proof-replay";
 import { defaultNetwork, REGISTRY_ID } from "@/lib/config";
 import {
   AGENT_ROLES,
@@ -157,6 +158,8 @@ export default function AgentsPage() {
         </div>
         <hr className="rule mt-6" />
       </header>
+
+      <ProofReplay />
 
       {REGISTRY_ID === "0x0" && (
         <div className="reveal reveal-2 mt-6 notice notice-warn">
